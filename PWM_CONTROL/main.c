@@ -28,6 +28,7 @@
 
 //#define DEBUG
 
+#include<stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
@@ -355,32 +356,41 @@ bool isCommand(char *str, uint8_t min_args)
     }
 }
 
-char* itoA(uint16_t number)
+void itoA(uint16_t number,char* value)
 {
     uint16_t digit = 0;
-    char value[10];
     uint8_t char_counter = 0;
+
+    if(number == 0)
+    {
+        value[0] = digit + 48;
+        value[1] = '\0';                    //return '0\0' if number is 0
+        return;
+
+    }
     while(number>0)
     {
         digit = number%10;
-        number = number/10;
+        number = number/10;                     //extract the number into value array.
         value[char_counter] = digit + 48;
         char_counter++;
     }
-    char_counter--;
+    char_counter--;                             //set char counter to index of last digit
+
     uint8_t start_counter = 0;
     uint8_t end_counter = char_counter;
     while(end_counter > char_counter/2 )
         {
                     char temp = value[end_counter];
                     value[end_counter] = value[start_counter];
-                    value[start_counter] = temp;
+                    value[start_counter] = temp;                    // reverse string to get digits in order.
                     start_counter++;
                     end_counter--;
         }
-
-    return value;
+    value[char_counter+1] = '\0';       //place null character after the last digit
+    return;
 }
+
 char* getString(uint8_t arg_number)
 {
     char* arg = &strInput[pos[arg_number]];
@@ -423,12 +433,10 @@ int main(void)
     // Initialize hardware
         initHw();
 
-
-
         while(1)
         {
             int j=0;
-            putsUart0("Colorimeter Commands: \n 1. RGB x,x,x \n 2. light \n ");
+            putsUart0("Colorimeter Commands: \n 1. RGB x,x,x \n 2. light \n 3. test \n");
             getsUart0(strInput,MAX_CHARS);
             field_count = tokenize_string(strInput,field_count);
 
@@ -475,10 +483,113 @@ int main(void)
               {
                   uint16_t adc_value = 0;
                   adc_value =  readAdc0Ss3();
-                  char *value = itoA(adc_value);
+                  char value[5];
+                  itoA(adc_value,&value);
                   value[4] = '\0';
                   putsUart0(value);
                   putsUart0("\r\n");
+              }
+          else if (isCommand("test",0))
+              {
+                  uint16_t counter = 0;
+
+                  for(counter=0;counter<=1023;counter++)
+
+                      // RAMP RED
+
+                      {
+                          setRgbColor(counter,0,0);
+                          waitMicrosecond(10000);
+                          uint16_t adc_return = readAdc0Ss3();
+                          char red_value[4];
+                          itoA(counter,red_value);
+
+                          putsUart0("\r\n");
+                          putsUart0(red_value);
+                          putsUart0(",");
+                          char green_value[4];
+                          itoA(0,green_value);
+
+                          putsUart0(green_value);
+                          putsUart0(",");
+                          char blue_value[4];
+                          itoA(0,blue_value);
+
+                          putsUart0(blue_value);
+                          putsUart0(",");
+                          char value[4];
+                          itoA(adc_return,value);
+
+                          putsUart0(value);
+                          putsUart0("\n");
+
+                      }
+
+
+                  // RAMP GREEN
+
+                  for(counter=0;counter<=1023;counter++)
+
+                         {
+                                        setRgbColor(0,counter,0);
+                                        waitMicrosecond(10000);
+                                        uint16_t adc_return = readAdc0Ss3();
+                                        char red_value[4];
+                                        itoA(0,red_value);
+
+                                        putsUart0("\r\n");
+                                        putsUart0(red_value);
+                                        putsUart0(",");
+                                        char green_value[4];
+                                        itoA(counter,green_value);
+
+                                         putsUart0(green_value);
+                                         putsUart0(",");
+                                         char blue_value[4];
+                                         itoA(0,blue_value);
+
+                                         putsUart0(blue_value);
+                                         putsUart0(",");
+                                         char value[4];
+                                         itoA(adc_return,value);
+
+                                         putsUart0(value);
+                                         putsUart0("\n");
+
+                           }
+
+                  // RAMP BLUE
+
+                  for(counter=0;counter<=1023;counter++)
+                                    {
+                                        setRgbColor(0,0,counter);
+                                        waitMicrosecond(10000);
+                                        uint16_t adc_return = readAdc0Ss3();
+                                         char red_value[4];
+                                         itoA(0,red_value);
+
+                                         putsUart0("\r\n");
+                                         putsUart0(red_value);
+                                         putsUart0(",");
+                                         char green_value[4];
+                                         itoA(0,green_value);
+
+                                         putsUart0(green_value);
+                                         putsUart0(",");
+                                         char blue_value[4];
+                                         itoA(counter,blue_value);
+
+                                         putsUart0(blue_value);
+                                         putsUart0(",");
+                                         char value[4];
+                                         itoA(adc_return,value);
+
+                                         putsUart0(value);
+                                         putsUart0("\n");
+
+                                    }
+
+
               }
 
           else
