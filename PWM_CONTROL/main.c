@@ -37,10 +37,12 @@
 #define RED_LED      (*((volatile uint32_t *)(0x42000000 + (0x400053FC-0x40000000)*32 + 5*4)))
 #define GREEN_LED    (*((volatile uint32_t *)(0x42000000 + (0x400243FC-0x40000000)*32 + 5*4)))
 #define BLUE_LED    (*((volatile uint32_t *)(0x42000000 + (0x400243FC-0x40000000)*32 + 4*4)))
+#define PUSH_BUTTON  (*((volatile uint32_t *)(0x42000000 + (0x400253FC-0x40000000)*32 + 4*4)))
 
 #define RED_LED_MASK 32
 #define BLUE_LED_MASK 16
 #define GREEN_LED_MASK 32
+#define PUSH_BUTTON_MASK 16
 
 #define DEBUG
 
@@ -48,6 +50,9 @@ uint8_t pos[MAX_FIELDS];
 uint8_t type[MAX_FIELDS];
 uint8_t field_count = 0;
 char strInput[MAX_CHARS];
+uint16_t rpwm = 0;
+uint16_t gpwm = 0;
+uint16_t bpwm = 0;
 
 //-----------------------------------------------------------------------------
 // Subroutines
@@ -75,6 +80,9 @@ void initHw()
     GPIO_PORTE_DEN_R &= ~0x08;                       // turn off digital operation on pin PE3
     GPIO_PORTE_AMSEL_R |= 0x08;
 
+    GPIO_PORTF_DIR_R = 0;
+    GPIO_PORTF_DEN_R = PUSH_BUTTON_MASK ;  // enable  pushbuttons
+    GPIO_PORTF_PUR_R = PUSH_BUTTON_MASK;
 
     ADC0_CC_R = ADC_CC_CS_SYSPLL;                    // select PLL as the time base (not needed, since default value)
     ADC0_ACTSS_R &= ~ADC_ACTSS_ASEN3;                // disable sample sequencer 3 (SS3) for programming
@@ -144,6 +152,11 @@ void initHw()
        UART0_LCRH_R = UART_LCRH_WLEN_8 | UART_LCRH_FEN; // configure for 8N1 w/ 16-level FIFO
        UART0_CTL_R = UART_CTL_TXE | UART_CTL_RXE | UART_CTL_UARTEN; // enable TX, RX, and module
 
+}
+
+void waitPbPress()
+{
+    while(PUSH_BUTTON);
 }
 
 int16_t readAdc0Ss3()
@@ -427,6 +440,118 @@ void setRgbColor(uint16_t red, uint16_t green, uint16_t blue)
     PWM0_2_CMPB_R = blue;          //green
 }
 
+void trigger()
+{
+    uint16_t i=0;
+    uint16_t adc_value=0;
+    char value_string[4];
+
+
+
+
+        setRgbColor(rpwm,0,0);
+        adc_value = readAdc0Ss3();
+        waitMicrosecond(10000);
+
+
+
+    itoA(adc_value,value_string);
+
+    putsUart0(value_string);
+    putsUart0(",");
+
+
+        setRgbColor(0,gpwm,0);
+        adc_value = readAdc0Ss3();
+        waitMicrosecond(10000);
+
+
+    itoA(adc_value,value_string);
+    putsUart0(value_string);
+    putsUart0(",");
+
+
+     setRgbColor(0,0,bpwm);
+     adc_value = readAdc0Ss3();
+     waitMicrosecond(10000);
+
+
+
+
+
+    itoA(adc_value,value_string);
+    putsUart0(value_string);
+    putsUart0("\r\n");
+
+    setRgbColor(0,0,0);
+}
+
+void calibrate()
+{
+    uint16_t thresh_value = 1250;        //threshold value
+
+    uint16_t counter = 0;
+
+    rpwm = 0;
+    gpwm = 0;
+    bpwm = 0;
+
+    for(counter=0;counter<1024;counter++)
+    {
+        setRgbColor(counter,0,0);
+        waitMicrosecond(10000);
+        uint16_t adc_return = readAdc0Ss3();
+
+        if(adc_return > (thresh_value - 25) && adc_return < (thresh_value + 25 ) )
+        {
+            rpwm = counter;
+            break;
+        }
+    }
+
+    for(counter = 0; counter<1024; counter++)
+    {
+               setRgbColor(0,counter,0);
+               waitMicrosecond(10000);
+               uint16_t adc_return = readAdc0Ss3();
+
+               if(adc_return > (thresh_value - 25) && adc_return < (thresh_value + 25 ) )
+               {
+                   gpwm = counter;
+                   break;
+               }
+    }
+
+    for(counter = 0; counter<1024; counter++)
+        {
+                   setRgbColor(0,0,counter);
+                   waitMicrosecond(10000);
+                   uint16_t adc_return = readAdc0Ss3();
+
+                   if(adc_return > (thresh_value - 25) && adc_return < (thresh_value + 25 ) )
+                   {
+                       bpwm = counter;
+                       break;
+                   }
+        }
+
+    char red_pwm_value[4];
+    char blue_pwm_value[4];
+    char green_pwm_value[4];
+
+    itoA(rpwm,red_pwm_value);
+    itoA(gpwm,green_pwm_value);
+    itoA(bpwm,blue_pwm_value);
+
+    putsUart0(red_pwm_value);
+    putsUart0(",");
+    putsUart0(green_pwm_value);
+    putsUart0(",");
+    putsUart0(blue_pwm_value);
+    putsUart0("\r\n");
+
+
+}
 
 int main(void)
 {
@@ -592,10 +717,32 @@ int main(void)
 
               }
 
+          else if( isCommand("calibrate",0) )
+                  {
+                      calibrate();
+                  }
+
+          else if( isCommand("trigger",0) )
+
+          {
+              trigger();
+          }
+
+          else if(isCommand("button",0))
+          {
+              while(1)
+              {
+              waitPbPress();
+              trigger();
+              }
+          }
+
           else
               {
                   putsUart0("Failed to turn on LED");
               }
+
+
 
         }
 
