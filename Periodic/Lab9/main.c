@@ -456,11 +456,12 @@ void trigger()
     char value_string[4];
 
 
-
-
+        putsUart0("Trigger Readings \n");
         setRgbColor(rpwm,0,0);
-        adc_value = readAdc0Ss3();
         waitMicrosecond(10000);
+        adc_value = readAdc0Ss3();
+
+
 
 
 
@@ -471,8 +472,9 @@ void trigger()
 
 
         setRgbColor(0,gpwm,0);
-        adc_value = readAdc0Ss3();
         waitMicrosecond(10000);
+        adc_value = readAdc0Ss3();
+
 
 
     itoA(adc_value,value_string);
@@ -481,8 +483,8 @@ void trigger()
 
 
      setRgbColor(0,0,bpwm);
-     adc_value = readAdc0Ss3();
      waitMicrosecond(10000);
+     adc_value = readAdc0Ss3();
 
 
 
@@ -584,7 +586,7 @@ int main(void)
 
           if(isCommand("blue",1))
               {
-              TIMER1_ICR_R = TIMER_ICR_TATOCINT;
+              TIMER1_CTL_R &= ~TIMER_CTL_TAEN;
                   char* toggle_switch;
                   toggle_switch = getValue(1);
                   putsUart0(toggle_switch);
@@ -607,7 +609,7 @@ int main(void)
 
           else if (isCommand("rgb",3))
               {
-              TIMER1_ICR_R = TIMER_ICR_TATOCINT;
+              TIMER1_CTL_R &= ~TIMER_CTL_TAEN;
                   uint16_t red_arg = getValue(1);
                   uint16_t green_arg = getValue(2);
                   uint16_t blue_arg = getValue(3);
@@ -623,7 +625,7 @@ int main(void)
 
           else if (isCommand("light",0))
               {
-              TIMER1_ICR_R = TIMER_ICR_TATOCINT;
+              TIMER1_CTL_R &= ~TIMER_CTL_TAEN;
                   uint16_t adc_value = 0;
                   adc_value =  readAdc0Ss3();
                   char value[5];
@@ -634,7 +636,7 @@ int main(void)
               }
           else if (isCommand("test",0))
               {
-              TIMER1_ICR_R = TIMER_ICR_TATOCINT;
+              TIMER1_CTL_R &= ~TIMER_CTL_TAEN;
                   uint16_t counter = 0;
 
                   for(counter=0;counter<=1023;counter++)
@@ -738,20 +740,20 @@ int main(void)
 
           else if( isCommand("calibrate",0) )
                   {
-              TIMER1_ICR_R = TIMER_ICR_TATOCINT;
+              TIMER1_CTL_R &= ~TIMER_CTL_TAEN;
                       calibrate();
                   }
 
           else if( isCommand("trigger",0) )
 
           {
-              TIMER1_ICR_R = TIMER_ICR_TATOCINT;
+              TIMER1_CTL_R &= ~TIMER_CTL_TAEN;
               trigger();
           }
 
           else if(isCommand("button",0))
           {
-              TIMER1_ICR_R = TIMER_ICR_TATOCINT;
+              TIMER1_CTL_R &= ~TIMER_CTL_TAEN;
               while(1)
               {
               waitPbPress();
