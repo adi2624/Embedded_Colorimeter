@@ -31,6 +31,7 @@
 #include<stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <math.h>
 #include <string.h>
 #include "tm4c123gh6pm.h"
 
@@ -53,6 +54,20 @@ char strInput[MAX_CHARS];
 uint16_t rpwm = 0;
 uint16_t gpwm = 0;
 uint16_t bpwm = 0;
+uint16_t color_values_counter = 0;
+
+struct color
+    {
+        uint16_t red_color_value;
+        uint16_t blue_color_value;
+        uint16_t green_color_value;
+        uint8_t valid_bit;
+    };
+
+struct color color_temp;    // for storing temporary trigger values
+
+
+struct color color_values[32]; // to store color values
 
 //-----------------------------------------------------------------------------
 // Subroutines
@@ -453,6 +468,8 @@ void trigger()
 {
     uint16_t i=0;
     uint16_t adc_value=0;
+
+
     char value_string[4];
 
 
@@ -462,7 +479,7 @@ void trigger()
         adc_value = readAdc0Ss3();
 
 
-
+        color_temp.red_color_value  = adc_value;
 
 
     itoA(adc_value,value_string);
@@ -475,6 +492,7 @@ void trigger()
         waitMicrosecond(10000);
         adc_value = readAdc0Ss3();
 
+         color_temp.green_color_value = adc_value;
 
 
     itoA(adc_value,value_string);
@@ -487,7 +505,7 @@ void trigger()
      adc_value = readAdc0Ss3();
 
 
-
+     color_temp.blue_color_value = adc_value;
 
 
     itoA(adc_value,value_string);
@@ -567,6 +585,63 @@ void calibrate()
     putsUart0(blue_pwm_value);
     putsUart0("\r\n");
 
+
+}
+
+void match(uint8_t error)
+{
+    float euc_dis = 0;
+    uint8_t i = 0;
+    trigger();
+    for(i=0; i<32; i++)
+    {
+        if(color_values[i].valid_bit == 1)
+        {
+            uint16_t red_error = 0;
+            uint16_t green_error = 0;
+            uint16_t blue_error = 0;
+
+            red_error = pow(color_temp.red_color_value - color_values[i].red_color_value,2);
+            green_error = pow(color_temp.green_color_value - color_values[i].green_color_value,2);
+            blue_error = pow(color_temp.blue_color_value - color_values[i].blue_color_value,2);
+
+            euc_dis = sqrt(red_error + green_error + blue_error);
+
+            if( euc_dis < (float)error  )
+            {
+                char index_value[4];
+                char rgb_triplet[4];
+
+                putsUart0("\r\n");
+                putsUart0("Match found : ");
+
+                itoA((i),index_value);
+
+                putsUart0(index_value);
+                putsUart0("\r\n");
+
+                itoA((color_values[i].red_color_value),rgb_triplet);
+
+                putsUart0("Red: ");
+                putsUart0(rgb_triplet);
+                putsUart0("\r\n");
+
+                itoA((color_values[i].green_color_value),rgb_triplet);
+
+                putsUart0("Green: ");
+                putsUart0(rgb_triplet);
+                putsUart0("\r\n");
+
+                itoA((color_values[i].blue_color_value),rgb_triplet);
+
+                putsUart0("Blue: ");
+                putsUart0(rgb_triplet);
+                putsUart0("\r\n");
+
+                break;
+            }
+        }
+    }
 
 }
 
@@ -774,6 +849,40 @@ int main(void)
             
             TIMER1_TAILR_R = (int)load_value;                        // set load value to 2e5 for 200 Hz interrupt rate
             TIMER1_CTL_R |= TIMER_CTL_TAEN;
+        }
+
+        else if(isCommand("color",1))
+        {
+            trigger();
+
+            uint16_t color_values_store;
+            color_values_store = getValue(1);
+
+            color_values[color_values_store].red_color_value = color_temp.red_color_value;
+            color_values[color_values_store].green_color_value = color_temp.green_color_value;
+            color_values[color_values_store].blue_color_value = color_temp.blue_color_value;
+
+            color_values[color_values_store].valid_bit = 1; //set the entry as valid.
+
+        }
+
+        else if(isCommand("erase",1))
+        {
+            uint16_t color_to_set_invalid;
+
+            color_to_set_invalid = getValue(1);
+
+            color_values[color_to_set_invalid].valid_bit = 0;  //set the entry as invalid.
+
+        }
+
+        else if(isCommand("match",1))
+        {
+            uint8_t error;
+
+            error = getValue(1);
+            match(error);
+
         }
           else
               {
