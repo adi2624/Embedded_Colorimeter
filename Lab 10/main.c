@@ -1,6 +1,9 @@
-// Serial Example
-// Jason Losh
+/*
+    Code written by: Aditya Rajguru and Gerardo Rodriguez
+    Purpose: to meet the requirements of the embedded systems course at the University of Texas at Arlington
+    Samples of code that initialized registers were taken from Dr. Jason Losh's examples
 
+*/
 //-----------------------------------------------------------------------------
 // Hardware Target
 //-----------------------------------------------------------------------------
@@ -11,7 +14,7 @@
 
 // Hardware configuration:
 // Red LED:
-//   PF1 drives an NPN transistor that powers the red LED
+//   PE1 drives an NPN transistor that powers the red LED
 // Green LED:
 //   PF3 drives an NPN transistor that powers the green LED
 // UART Interface:
@@ -36,13 +39,13 @@
 #include "tm4c123gh6pm.h"
 
 #define RED_LED      (*((volatile uint32_t *)(0x42000000 + (0x400053FC-0x40000000)*32 + 5*4)))
-#define GREEN_LED    (*((volatile uint32_t *)(0x42000000 + (0x400243FC-0x40000000)*32 + 5*4)))
-#define BLUE_LED    (*((volatile uint32_t *)(0x42000000 + (0x400243FC-0x40000000)*32 + 4*4)))
+#define GREEN_LED    (*((volatile uint32_t *)(0x42000000 + (0x400243FC-0x40000000)*32 + 4*4)))
+#define BLUE_LED    (*((volatile uint32_t *)(0x42000000 + (0x400243FC-0x40000000)*32 + 5*4)))
 #define PUSH_BUTTON  (*((volatile uint32_t *)(0x42000000 + (0x400253FC-0x40000000)*32 + 4*4)))
 
 #define RED_LED_MASK 32
-#define BLUE_LED_MASK 16
-#define GREEN_LED_MASK 32
+#define BLUE_LED_MASK 32
+#define GREEN_LED_MASK 16
 #define PUSH_BUTTON_MASK 16
 
 #define ONBOARD_LED_MASK 8
@@ -57,6 +60,7 @@ uint16_t rpwm = 0;
 uint16_t gpwm = 0;
 uint16_t bpwm = 0;
 uint16_t color_values_counter = 0;
+uint8_t debounce_count = 0;
 
 float average_value_red = 0;
 float average_value_blue = 0;
@@ -97,8 +101,8 @@ void initHw()
     SYSCTL_RCGC0_R |= SYSCTL_RCGC0_PWM0;             // turn-on PWM0 module
     // Configure LED pin B5
 
-    SYSCTL_RCGCTIMER_R |= SYSCTL_RCGCTIMER_R1;
-    
+    SYSCTL_RCGCTIMER_R |= SYSCTL_RCGCTIMER_R1 | SYSCTL_RCGCTIMER_R2;
+
     SYSCTL_RCGCADC_R |= 1;                           // turn on ADC module 0 clocking
     SYSCTL_RCGCUART_R |= SYSCTL_RCGCUART_R0;
 
@@ -179,7 +183,7 @@ void initHw()
        UART0_FBRD_R = 45;                               // round(fract(r)*64)=45
        UART0_LCRH_R = UART_LCRH_WLEN_8 | UART_LCRH_FEN; // configure for 8N1 w/ 16-level FIFO
        UART0_CTL_R = UART_CTL_TXE | UART_CTL_RXE | UART_CTL_UARTEN; // enable TX, RX, and module
-    
+
     // Configure Timer 1 for keyboard service
     TIMER1_CTL_R &= ~TIMER_CTL_TAEN;                 // turn-off timer before reconfiguring
     TIMER1_CFG_R = TIMER_CFG_32_BIT_TIMER;           // configure as 32-bit timer (A+B)
@@ -187,13 +191,24 @@ void initHw()
     TIMER1_IMR_R = TIMER_IMR_TATOIM;                 // turn-on interrupts
     NVIC_EN0_R |= 1 << (INT_TIMER1A-16);
     // turn-on timer
+    TIMER2_CTL_R &= ~TIMER_CTL_TAEN;
+    TIMER2_CFG_R = TIMER_CFG_32_BIT_TIMER;
+    TIMER2_TAMR_R = TIMER_TAMR_TAMR_PERIOD;
+    TIMER2_TAILR_R = 0x61A80;
+    TIMER2_IMR_R = TIMER_IMR_TATOIM;
+    NVIC_EN0_R |= 1 << (INT_TIMER2A-16);
 }
 
-void waitPbPress()
+void buttonIsr()
 {
-    while(PUSH_BUTTON);
+    if (!PUSH_BUTTON) debounce_count++;
+    TIMER2_ICR_R = TIMER_ICR_TATOCINT;
+    if (debounce_count == 15)
+    {
+        trigger();
+        debounce_count = 0;
+    }
 }
-
 int16_t readAdc0Ss3()
 {
     ADC0_PSSI_R |= ADC_PSSI_SS3;                     // set start bit
@@ -384,7 +399,6 @@ bool isCommand(char *str, uint8_t min_args)
     //assumption made that the first word in a command is the operation.
 
     char* command = &strInput[pos[0]];
-    uint8_t i=0;
     if(strcmp(command,str)==0)
     {
         if( (field_count-1) >= min_args)
@@ -471,18 +485,14 @@ uint16_t getValue(uint8_t arg_number)
 void setRgbColor(uint16_t red, uint16_t green, uint16_t blue)
 {
     PWM0_1_CMPB_R = red;
-    PWM0_2_CMPA_R = green;           //blue
-    PWM0_2_CMPB_R = blue;          //green
+    PWM0_2_CMPA_R = blue;           //blue
+    PWM0_2_CMPB_R = green;          //green
 }
 
 void trigger()
 {
-    uint16_t i=0;
-    uint16_t adc_value=0;
-
-
-    char value_string[4];
-
+    uint16_t adc_value[3];
+    char temp[64];
     if(blink==1)
     {
         GPIO_PORTF_DATA_R |= ONBOARD_LED_MASK;
@@ -490,59 +500,29 @@ void trigger()
         GPIO_PORTF_DATA_R &= ~ONBOARD_LED_MASK;
     }
 
-        setRgbColor(rpwm,0,0);
-        waitMicrosecond(10000);
-        adc_value = readAdc0Ss3();
+    setRgbColor(rpwm,0,0);
+    waitMicrosecond(10000);
+    adc_value[0] = readAdc0Ss3();
+
+    color_temp.red_color_value  = adc_value[0];
+
+    setRgbColor(0,gpwm,0);
+    waitMicrosecond(10000);
+    adc_value[1] = readAdc0Ss3();
+
+    color_temp.green_color_value = adc_value[1];
+
+    setRgbColor(0,0,bpwm);
+    waitMicrosecond(10000);
+    adc_value[2] = readAdc0Ss3();
 
 
-        color_temp.red_color_value  = adc_value >> 2;
-
-        adc_value = adc_value >> 2;
-
-
-    itoA(adc_value,value_string);
-
-    if(delta_value==0)
-    {
-        putsUart0("Trigger Readings \n");
-        putsUart0(value_string);
-        putsUart0(",");
-    }
-
-
-
-        setRgbColor(0,gpwm,0);
-        waitMicrosecond(10000);
-        adc_value = readAdc0Ss3();
-
-         color_temp.green_color_value = adc_value >> 2;
-         adc_value = adc_value >> 2;
-
-    itoA(adc_value,value_string);
-    if(delta_value==0)
-    {
-    putsUart0(value_string);
-    putsUart0(",");
-    }
-
-
-     setRgbColor(0,0,bpwm);
-     waitMicrosecond(10000);
-     adc_value = readAdc0Ss3();
-
-
-     color_temp.blue_color_value = adc_value >> 2;
-     adc_value = adc_value >> 2;
-
-
-    itoA(adc_value,value_string);
-    if(delta_value==0)
-    {
-    putsUart0(value_string);
-    putsUart0("\r\n");
-    }
+    color_temp.blue_color_value = adc_value[2];
 
     setRgbColor(0,0,0);
+    sprintf(temp,"\nRED:\t %d\nGREEN:\t %d\nBLUE:\t %d\n\n", adc_value[0], adc_value[1], adc_value[2]);
+    if (!delta_value)
+        putsUart0(temp);
 }
 
 void keyboardIsr()
@@ -577,10 +557,10 @@ void keyboardIsr()
 }
 void calibrate()
 {
-    uint16_t thresh_value = 1023;        //threshold value
+    uint16_t thresh_value = 255;        //threshold value
 
     uint16_t counter = 0;
-
+    char output[64];
     rpwm = 0;
     gpwm = 0;
     bpwm = 0;
@@ -588,7 +568,7 @@ void calibrate()
     for(counter=0;counter<1024;counter++)
     {
         setRgbColor(counter,0,0);
-        waitMicrosecond(10000);
+        waitMicrosecond(2000);
         uint16_t adc_return = readAdc0Ss3();
 
         if(adc_return > (thresh_value - 25) && adc_return < (thresh_value + 25 ) )
@@ -601,7 +581,7 @@ void calibrate()
     for(counter = 0; counter<1024; counter++)
     {
                setRgbColor(0,counter,0);
-               waitMicrosecond(10000);
+               waitMicrosecond(2000);
                uint16_t adc_return = readAdc0Ss3();
 
                if(adc_return > (thresh_value - 25) && adc_return < (thresh_value + 25 ) )
@@ -614,7 +594,7 @@ void calibrate()
     for(counter = 0; counter<1024; counter++)
         {
                    setRgbColor(0,0,counter);
-                   waitMicrosecond(10000);
+                   waitMicrosecond(2000);
                    uint16_t adc_return = readAdc0Ss3();
 
                    if(adc_return > (thresh_value - 25) && adc_return < (thresh_value + 25 ) )
@@ -623,23 +603,9 @@ void calibrate()
                        break;
                    }
         }
-
-    char red_pwm_value[4];
-    char blue_pwm_value[4];
-    char green_pwm_value[4];
-
-    itoA(rpwm,red_pwm_value);
-    itoA(gpwm,green_pwm_value);
-    itoA(bpwm,blue_pwm_value);
-
-    putsUart0(red_pwm_value);
-    putsUart0(",");
-    putsUart0(green_pwm_value);
-    putsUart0(",");
-    putsUart0(blue_pwm_value);
-    putsUart0("\r\n");
-
-
+    setRgbColor(0,0,0);
+    sprintf(output,"\n\nCOLOR\t PWM VALUE\nRED:\t %d\nGREEN:\t %d\nBLUE:\t %d\n", rpwm, gpwm, bpwm);
+    putsUart0(output);
 }
 
 void match(uint8_t error)
@@ -667,7 +633,7 @@ void match(uint8_t error)
                 char rgb_triplet[4];
 
                 putsUart0("\r\n");
-                putsUart0("Match found : ");
+                putsUart0("Match found : color - ");
 
                 itoA((i),index_value);
 
@@ -720,20 +686,37 @@ uint8_t delta()
         }
 
     }
+void putMenu()
+{
+    char *menu = "\n\t\t Menu \n\n"
+                "calibrate:\t Calibrate according to white balance\n"
+                "color N:\t store current color\n";
 
+    char *menu1 = "erase N:\t erase reference color N\n"
+                  "periodic T:\t send RGB triplet every 0.1 x T seconds\n"
+                  "delta D:\t send RGB triplet when RMS average vs long-term average is greater than D\n";
+    char *menu2 = "match E:\t send RGB triplet when error between sample and color reference is less than E\n"
+                  "trigger:\t send RGB triplet immediately. Trigger does not work when button mode is on\n"
+                  "button: \t send RGB triplet when PB is pressed.";
+    char *menu3 = " Entering \"button\" will toggle button status.\nled off:\t disable green status LED\n"
+                  "led on: \t enable green status LED\n"
+                  "led sample:\t blink green status LED when sample is taken\n";
+    char *menu4 = "test:  \t\t ramp up RGB separately, respectively, and output 12-bit light intensity\n"
+                  "rgb A B C:\t sends an RGB value; A B and C vary from 0 to 1023\n"
+                  "menu:\t\t prints the menu\n\n";
+    putsUart0(menu); putsUart0(menu1); putsUart0(menu2); putsUart0(menu3); putsUart0(menu4);
+}
 int main(void)
 {
     // Initialize hardware
         initHw();
 
+        putsUart0("\n\nWelcome to ColorimeterUTA!\n\n");
+        putMenu();
         while(1)
         {
-            int j=0;
-            putsUart0("Colorimeter Commands: \n 1. RGB x,x,x \n 2. light \n 3. test \n");
             getsUart0(strInput,MAX_CHARS);
             field_count = tokenize_string(strInput,field_count);
-
-
 
           if(isCommand("blue",1))
               {
@@ -757,7 +740,8 @@ int main(void)
                   }
 
           }
-
+          else if (isCommand("menu", 0))
+              putMenu();
           else if (isCommand("rgb",3))
               {
               TIMER1_CTL_R &= ~TIMER_CTL_TAEN;
@@ -767,10 +751,7 @@ int main(void)
 
 
                   setRgbColor(red_arg,green_arg,blue_arg);
-
-
-
-                  putsUart0("Successfully turned on LED ");
+                  putsUart0("\n\n");
 
               }
 
@@ -787,6 +768,7 @@ int main(void)
               }
           else if (isCommand("test",0))
               {
+              putsUart0("Testing LEDs with phototransistor...\n\n");
               TIMER1_CTL_R &= ~TIMER_CTL_TAEN;
                   uint16_t counter = 0;
 
@@ -885,8 +867,7 @@ int main(void)
                                          putsUart0("\n");
 
                                     }
-
-
+                  putsUart0("Testing done\n\n");
               }
 
           else if( isCommand("calibrate",0) )
@@ -896,39 +877,36 @@ int main(void)
                   }
 
           else if( isCommand("trigger",0) )
-
           {
               TIMER1_CTL_R &= ~TIMER_CTL_TAEN;
-              trigger();
+              if (TIMER2_CTL_R && 0x01)
+                   putsUart0("Button mode is on. Cannot execute trigger. Please turn off button mode to use terminal trigger.\n\n");
+              else trigger();
           }
 
           else if(isCommand("button",0))
           {
               TIMER1_CTL_R &= ~TIMER_CTL_TAEN;
-              while(1)
-              {
-              waitPbPress();
-              trigger();
-              }
+              TIMER2_CTL_R ^= TIMER_CTL_TAEN;
+              putsUart0("Button mode: ");
+              if (TIMER2_CTL_R) putsUart0("ON\n\n");
+              else              putsUart0("OFF\n\n");
           }
         else if(isCommand("periodic",1))
         {
             uint16_t value;
             float frequency;
             uint32_t load_value;
-            
-            value = getValue(1);
-            
-            if(value == 6894 )          //getValue always returns 6894 when off is issued as an argument
 
-            {
-                main();
-            }
+            value = getValue(1);
+
+            if(value == 6894 )          //getValue always returns 6894 when off is issued as an argument
+                TIMER1_CTL_R &= ~TIMER_CTL_TAEN;
 
             frequency = (float)(1) /(float)((float)value/10);
-            
+
             load_value = 40000000/frequency;
-            
+
             TIMER1_TAILR_R = (int)load_value;                        // set load value to 2e5 for 200 Hz interrupt rate
             TIMER1_CTL_R |= TIMER_CTL_TAEN;
         }
@@ -946,16 +924,15 @@ int main(void)
 
             color_values[color_values_store].valid_bit = 1; //set the entry as valid.
 
+            putsUart0("\nColor stored in location: "); putsUart0(getString(1)); putsUart0("\n");
         }
 
         else if(isCommand("erase",1))
         {
             uint16_t color_to_set_invalid;
-
             color_to_set_invalid = getValue(1);
-
             color_values[color_to_set_invalid].valid_bit = 0;  //set the entry as invalid.
-
+            putsUart0("\nErased color stored in location: "); putsUart0(getString(1)); putsUart0("\n");
         }
 
         else if(isCommand("match",1))
@@ -967,41 +944,28 @@ int main(void)
             //match(error);
 
         }
-
         else if(isCommand("delta",1))
-        {
             delta_value = getValue(1);
-        }
 
         else if(isCommand("led",1))
         {
             GPIO_PORTF_DATA_R &= ~ONBOARD_LED_MASK;
             char* arg;
-
             arg = getString(1);
             if(strcmp(arg,"on")==0)
-            {
                 GPIO_PORTF_DATA_R |= ONBOARD_LED_MASK;
-            }
             else if(strcmp(arg,"sample")==0)
             {
-                blink = 1;
+                blink ^= 1;
+                if (blink) putsUart0("led sample: on\n");
+                else       putsUart0("led sample: off\n");
             }
             else
-            {
                 GPIO_PORTF_DATA_R &= ~ONBOARD_LED_MASK;
-            }
-
         }
           else
               {
-                  putsUart0("Failed to turn on LED");
+                  putsUart0(getString(0)); putsUart0(" is not a command or you supplied the wrong number of arguments. Try again.\n\n");
               }
-
-
-
         }
-
-
 }
-
