@@ -13,13 +13,13 @@ This device is implemented with a Tiva C TM4C123GXL Launchpad from Texas Instrum
 
 The square waves represent the pulse-width-modulated signals that the board sends to adjust the power delivered to a specific light-emitting diode. Along with this circuit, a separate circuit was designed and implemented to detect similarly —or dissimilarly— colored surfaces.
 
-<img src="circuit_2.png" alt="circuit_2" width="550"> </img>
+<img src="https://raw.githubusercontent.com/adi2624/Embedded_Colorimeter/master/report/circuit_2.png" alt="circuit_2" width="550"> </img>
 
 Here, the voltmeter is a placeholder for the port responsible for receiving analog input from the phototransistor. The BJT transistor is a placeholder for the phototransistor and the square wave is a placeholder for the light source coming from the tri-color LED.
 
 The two circuits are placed adjacent to each other so that light from the tri-color LED can be reflected off of a surface and directed towards the phototransistor. Any light not absorbed by the surface of interest will strike the phototransistor. Below is an image of the physical board sans the spacers used to direct the light.
 
-<img src="board.png" alt="board" width="500"> </img>
+<img src="https://raw.githubusercontent.com/adi2624/Embedded_Colorimeter/master/report/board.png" alt="board" width="500"> </img>
 
 The transistors to the LEDs are driven by the digital ports on the board. These digital ports send out pulse-width-modulated signals; these signals are capable of adjusting the brightness on each LED due to the characteristic equation
 
@@ -33,7 +33,7 @@ A constant current and voltage turned on for an arbitary amount of time will var
 
 The interface of the colorimeter is text-based. Any terminal capable of communicating over the universal asynchronous reader transmitter interface is capable of communicating with the board while running the program. To communicate properly, the terminal must be sending and receiving at a Baud rate of 115,200 with 8 data bits, 1 start bit, and 1 stop bit. Furthermore, the commands must not exceed a string length of 80 bytes. Below is a screen capture of the terminal after being calibrated.
 
-<img src="sample_output.png" alt="term" width="650"> </img>
+<img src="https://raw.githubusercontent.com/adi2624/Embedded_Colorimeter/master/report/sample_output.png" alt="term" width="650"> </img>
 
 ### Functionality
 
