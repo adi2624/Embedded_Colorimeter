@@ -9,7 +9,7 @@ There is an increasing demand in automation in the present manufacturing industr
 ### Implementation
 
 This device is implemented with a Tiva C TM4C123GXL Launchpad from Texas Instruments. Circuitry was designed and implemented along with the board as well. Below, you'll find the relevant circuits used in the device.
-<img src="circuit.png" alt="circuit" width="550" align="center"> </img>
+<img src="https://raw.githubusercontent.com/adi2624/Embedded_Colorimeter/master/report/circuit.png)" alt="circuit" width="550" align="center"> </img>
 
 The square waves represent the pulse-width-modulated signals that the board sends to adjust the power delivered to a specific light-emitting diode. Along with this circuit, a separate circuit was designed and implemented to detect similarly —or dissimilarly— colored surfaces.
 
